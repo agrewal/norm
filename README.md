@@ -3,11 +3,9 @@ Golang DB layer generator without needing an intermediate ORM layer. It allows
 you to write SQL, with some comment annotations. These annotations are used to
 generate the Golang code.
 
-# Example
-This example uses PostgreSQL, but this should work with other databases too.
-
+## Example
 Suppose you have the following SQL query which selects a given user from a
-`user` table. 
+`users` table. 
 
 ```sql
 -- !read GetUserListNoModel
