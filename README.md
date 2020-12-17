@@ -1,7 +1,9 @@
 # norm
-Golang DB layer generator without needing an intermediate ORM layer. It allows
-you to write SQL, with some comment annotations. These annotations are used to
-generate the Golang code.
+`norm` is a Golang DB layer generator. It generates code that doesn't make any
+assumptions about the intermediate model structs. It can bind to user provided
+structs, or generate code that doesn't depend on these.  You write SQL, with
+some comment annotations. These annotations are used to generate the Golang
+code.
 
 ## Example
 Suppose you have the following SQL query which selects a given user from a
