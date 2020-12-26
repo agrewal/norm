@@ -51,10 +51,10 @@ func (res GetUserListNoModelResult) Close() {
 }
 
 // Retrieves all emails from the users table
-func (n *Norm) GetUserListNoModelScan(limit int, offset int) (*GetUserListNoModelResult, error) {
+func GetUserListNoModelScan(db *sql.DB, limit int, offset int) (*GetUserListNoModelResult, error) {
 	result := GetUserListNoModelResult{}
 	var err error
-	result.stmt, err = n.db.Prepare(`SELECT id, email
+	result.stmt, err = db.Prepare(`SELECT id, email
 FROM users
 LIMIT $1
 OFFSET $2`)
@@ -74,8 +74,8 @@ type GetUserListNoModelOutput struct {
 	Email *string
 }
 
-func (n *Norm) GetUserListNoModel(limit int, offset int) ([]GetUserListNoModelOutput, error) {
-	res, err := n.GetUserListNoModelScan(limit, offset)
+func GetUserListNoModel(db *sql.DB, limit int, offset int) ([]GetUserListNoModelOutput, error) {
+	res, err := GetUserListNoModelScan(db, limit, offset)
 	if err != nil {
 		return nil, err
 	}

@@ -33,25 +33,6 @@ import (
 	_ "{{.driverLib}}"
 	{{.imports}}
 )
-
-type Norm struct {
-	db *sql.DB
-}
-
-func NewNorm(connStr string) (*Norm, error) {
-	db, err := sql.Open("{{.driverName}}", connStr)
-	if err != nil {
-		return nil, err
-	}
-	if err := db.Ping(); err != nil {
-		return nil, err
-	}
-	return &Norm{db}, nil
-}
-
-func (n *Norm) Close() {
-	n.db.Close()
-}
 `
 
 var headerTmpl *template.Template
@@ -59,11 +40,11 @@ var headerTmpl *template.Template
 const readOne = `
 {{if .Model}}
 {{range .Doc}}// {{print .}}{{end}}
-func (n *Norm) {{.FuncName}}({{getFuncSig .Inputs}}) (*{{.Model}}, error) {
+func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) (*{{.Model}}, error) {
     {{range .Outputs}}
 	var _internal_{{.Name}} {{.Typ}}
 	{{end}}
-	stmt, err := n.db.Prepare(` + "`{{.BodyString}}`" + `)
+	stmt, err := db.Prepare(` + "`{{.BodyString}}`" + `)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +60,8 @@ func (n *Norm) {{.FuncName}}({{getFuncSig .Inputs}}) (*{{.Model}}, error) {
 }
 {{else}}
 {{range .Doc}}// {{print .}}{{end}}
-func (n *Norm) {{.FuncName}}({{if .Inputs}}{{getFuncSig .Inputs}}, {{end}}{{getFuncSigWithTypePrefix .Outputs "*"}}) error {
-	stmt, err := n.db.Prepare(` + "`{{.BodyString}}`" + `)
+func {{.FuncName}}(db *sql.DB, {{if .Inputs}}{{getFuncSig .Inputs}}, {{end}}{{getFuncSigWithTypePrefix .Outputs "*"}}) error {
+	stmt, err := db.Prepare(` + "`{{.BodyString}}`" + `)
 	if err != nil {
 		return err
 	}
@@ -119,10 +100,10 @@ func (res {{.FuncName}}Result) Close() {
 }
 
 {{range .Doc}}// {{print .}}{{end}}
-func (n *Norm) {{.FuncName}}Scan({{getFuncSig .Inputs}}) (*{{.FuncName}}Result, error) {
+func {{.FuncName}}Scan(db *sql.DB, {{getFuncSig .Inputs}}) (*{{.FuncName}}Result, error) {
 	result := {{.FuncName}}Result{}
 	var err error
-	result.stmt, err = n.db.Prepare(` + "`{{.BodyString}}`" + `)
+	result.stmt, err = db.Prepare(` + "`{{.BodyString}}`" + `)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +116,8 @@ func (n *Norm) {{.FuncName}}Scan({{getFuncSig .Inputs}}) (*{{.FuncName}}Result, 
 }
 
 {{if .Model}}
-func (n *Norm) {{.FuncName}}({{getFuncSig .Inputs}}) ([]{{.Model}}, error) {
-	res, err := n.{{.FuncName}}Scan({{getCallSig .Inputs}})
+func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) ([]{{.Model}}, error) {
+	res, err := {{.FuncName}}Scan(db, {{getCallSig .Inputs}})
 	if (err != nil) {
 		return nil, err
 	}
@@ -156,8 +137,8 @@ type {{.FuncName}}Output struct {
 {{getStructSig .Outputs}}
 }
 
-func (n *Norm) {{.FuncName}}({{getFuncSig .Inputs}}) ([]{{.FuncName}}Output, error) {
-	res, err := n.{{.FuncName}}Scan({{getCallSig .Inputs}})
+func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) ([]{{.FuncName}}Output, error) {
+	res, err := {{.FuncName}}Scan(db, {{getCallSig .Inputs}})
 	if (err != nil) {
 		return nil, err
 	}
@@ -179,8 +160,8 @@ var readTmpl *template.Template
 
 const exec = `
 {{range .Doc}}// {{print .}}{{end}}
-func (n *Norm) {{.FuncName}}({{getFuncSig .Inputs}}) error {
-	stmt, err := n.db.Prepare(` + "`{{.BodyString}}`" + `)
+func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) error {
+	stmt, err := db.Prepare(` + "`{{.BodyString}}`" + `)
 	if err != nil {
 		return err
 	}
