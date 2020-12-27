@@ -30,7 +30,6 @@ package {{.package}}
 
 import (
 	"database/sql"
-	_ "{{.driverLib}}"
 	{{.imports}}
 )
 `
@@ -40,7 +39,7 @@ var headerTmpl *template.Template
 const readOne = `
 {{if .Model}}
 {{range .Doc}}// {{print .}}{{end}}
-func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) (*{{.Model}}, error) {
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) (*{{.Model}}, error) {
     {{range .Outputs}}
 	var _internal_{{.Name}} {{.Typ}}
 	{{end}}
@@ -58,18 +57,37 @@ func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) (*{{.Model}}, error) {
 		{{end}}
 	}, nil
 }
-{{else}}
+{{else if eq (len .Outputs) 1}}
 {{range .Doc}}// {{print .}}{{end}}
-func {{.FuncName}}(db *sql.DB, {{if .Inputs}}{{getFuncSig .Inputs}}, {{end}}{{getFuncSigWithTypePrefix .Outputs "*"}}) error {
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) (*{{getTypeSig .Outputs}}, error) {
 	stmt, err := db.Prepare(` + "`{{.BodyString}}`" + `)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer stmt.Close()
-	if err = stmt.QueryRow({{getCallSig .Inputs}}).Scan({{getCallSig .Outputs}}); err != nil {
-		return err
+	var o {{getTypeSig .Outputs}}
+	if err = stmt.QueryRow({{getCallSig .Inputs}}).Scan(&o); err != nil {
+		return nil, err
 	}
-	return nil
+	return &o, nil
+}
+{{else}}
+type {{.FuncName}}Output struct {
+{{getStructSig .Outputs}}
+}
+
+{{range .Doc}}// {{print .}}{{end}}
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) (*{{.FuncName}}Output, error) {
+	stmt, err := db.Prepare(` + "`{{.BodyString}}`" + `)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	var o {{.FuncName}}Output
+	if err = stmt.QueryRow({{getCallSig .Inputs}}).Scan({{getCallSigWithPrefix .Outputs "&o."}}); err != nil {
+		return nil, err
+	}
+	return &o, nil
 }
 {{end}}
 `
@@ -100,7 +118,7 @@ func (res {{.FuncName}}Result) Close() {
 }
 
 {{range .Doc}}// {{print .}}{{end}}
-func {{.FuncName}}Scan(db *sql.DB, {{getFuncSig .Inputs}}) (*{{.FuncName}}Result, error) {
+func {{.FuncName}}Scan(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) (*{{.FuncName}}Result, error) {
 	result := {{.FuncName}}Result{}
 	var err error
 	result.stmt, err = db.Prepare(` + "`{{.BodyString}}`" + `)
@@ -116,7 +134,7 @@ func {{.FuncName}}Scan(db *sql.DB, {{getFuncSig .Inputs}}) (*{{.FuncName}}Result
 }
 
 {{if .Model}}
-func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) ([]{{.Model}}, error) {
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) ([]{{.Model}}, error) {
 	res, err := {{.FuncName}}Scan(db, {{getCallSig .Inputs}})
 	if (err != nil) {
 		return nil, err
@@ -132,12 +150,29 @@ func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) ([]{{.Model}}, error) {
 	}
 	return ret, nil
 }
+{{else if eq (len .Outputs) 1}}
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) ([]{{getTypeSig .Outputs}}, error) {
+	res, err := {{.FuncName}}Scan(db, {{getCallSig .Inputs}})
+	if (err != nil) {
+		return nil, err
+	}
+	defer res.Close()
+	var ret []{{getTypeSig .Outputs}}
+	for res.Next() {
+		var o {{getTypeSig .Outputs}}
+		if err := res.Scan(&o); err != nil {
+			return ret, err
+		}
+		ret = append(ret, o)
+	}
+	return ret, nil
+}
 {{else}}
 type {{.FuncName}}Output struct {
 {{getStructSig .Outputs}}
 }
 
-func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) ([]{{.FuncName}}Output, error) {
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) ([]{{.FuncName}}Output, error) {
 	res, err := {{.FuncName}}Scan(db, {{getCallSig .Inputs}})
 	if (err != nil) {
 		return nil, err
@@ -160,7 +195,7 @@ var readTmpl *template.Template
 
 const exec = `
 {{range .Doc}}// {{print .}}{{end}}
-func {{.FuncName}}(db *sql.DB, {{getFuncSig .Inputs}}) error {
+func {{.FuncName}}(db *sql.DB{{if .Inputs}}, {{else}}{{end}}{{getFuncSig .Inputs}}) error {
 	stmt, err := db.Prepare(` + "`{{.BodyString}}`" + `)
 	if err != nil {
 		return err
@@ -178,6 +213,7 @@ var execTmpl *template.Template
 
 var funcMap template.FuncMap = template.FuncMap{
 	"getFuncSig":               getFuncSig,
+	"getTypeSig":               getTypeSig,
 	"getFuncSigWithTypePrefix": getFuncSigWithTypePrefix,
 	"getCallSig":               getCallSig,
 	"getCallSigWithPrefix":     getCallSigWithPrefix,
@@ -241,6 +277,18 @@ func getFuncSig(args []arg) string {
 			fmt.Fprintf(&ret, "%s %s, ", a.Name, a.Typ)
 		} else {
 			fmt.Fprintf(&ret, "%s %s", a.Name, a.Typ)
+		}
+	}
+	return ret.String()
+}
+
+func getTypeSig(args []arg) string {
+	var ret strings.Builder
+	for ix, a := range args {
+		if ix < len(args)-1 {
+			fmt.Fprintf(&ret, "%s, ", a.Typ)
+		} else {
+			fmt.Fprintf(&ret, "%s", a.Typ)
 		}
 	}
 	return ret.String()
@@ -313,15 +361,11 @@ func main() {
 	scanner := bufio.NewScanner(f)
 	outFile := "db.go"
 	pkgName := "db"
-	driverLib := "github.com/lib/pq"
-	driverName := "postgres"
 	i := 1
 
 	rxFile := regexp.MustCompile(`^-- !file ([^\s]+)$`)
 	rxPkg := regexp.MustCompile(`^-- !package ([^\s]+)$`)
 	rxImports := regexp.MustCompile(`^-- !import (.+)$`)
-	rxDriverLib := regexp.MustCompile(`^-- !driver_lib ([^\s]+)$`)
-	rxDriverName := regexp.MustCompile(`^-- !driver_name ([^\s]+)$`)
 	rxReadOne := regexp.MustCompile(`^-- !read_one ([^\s]+)$`)
 	rxRead := regexp.MustCompile(`^-- !read ([^\s]+)$`)
 	rxExec := regexp.MustCompile(`^-- !exec ([^\s]+)$`)
@@ -356,30 +400,12 @@ func main() {
 			i++
 			continue
 		}
-		if strings.HasPrefix(line, `-- !driver_lib`) {
-			matches := rxDriverLib.FindStringSubmatch(line)
-			if len(matches) != 2 {
-				panic(fmt.Sprintf("Format error on line %d: %q", i, line))
-			}
-			driverLib = matches[1]
-			i++
-			continue
-		}
 		if strings.HasPrefix(line, `-- !import`) {
 			matches := rxImports.FindStringSubmatch(line)
 			if len(matches) != 2 {
 				panic(fmt.Sprintf("Format error on line %d: %q", i, line))
 			}
 			imports = append(imports, matches[1])
-			i++
-			continue
-		}
-		if strings.HasPrefix(line, `-- !driver_name`) {
-			matches := rxDriverName.FindStringSubmatch(line)
-			if len(matches) != 2 {
-				panic(fmt.Sprintf("Format error on line %d: %q", i, line))
-			}
-			driverName = matches[1]
 			i++
 			continue
 		}
@@ -577,11 +603,9 @@ func main() {
 
 	// do writes
 	if err = headerTmpl.Execute(&bb, map[string]string{
-		"package":    pkgName,
-		"date":       fmt.Sprintf("%s", time.Now()),
-		"driverLib":  driverLib,
-		"driverName": driverName,
-		"imports":    strings.Join(imports, "\n"),
+		"package": pkgName,
+		"date":    fmt.Sprintf("%s", time.Now()),
+		"imports": strings.Join(imports, "\n"),
 	}); err != nil {
 		panic(err)
 	}

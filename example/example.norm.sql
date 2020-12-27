@@ -4,38 +4,66 @@
 -- !file store.go
 -- Filename to write the generated output in
 
-
 -- !package example
 -- package name of the generated code
 
-
--- !driver_lib github.com/lib/pq
--- Database driver library
-
--- !driver_name postgres
--- Database driver name
-
--- You can import packages by putting in a command like so !import "github.com/agrewal/norm/example"
+-- You can import packages by putting in a command like so !import "time"
 
 -- !read GetUserListNoModel
--- !input limit int
--- !input offset int
 -- !output ID int
--- !output Email *string
+-- !output Email string
 -- !doc Retrieves all emails from the users table
 SELECT id, email
-FROM users
-LIMIT $1
-OFFSET $2
+FROM user
+ORDER BY email ASC
+
+-- !read GetUserEmailsNoModel
+-- !output Email string
+-- !doc Retrieves all emails from the users table
+SELECT email
+FROM user
+ORDER BY email ASC
 
 -- !read GetUserListWithModel
--- !input limit int
--- !input offset int
 -- !output ID int
--- !output Email *string
+-- !output Email string
 -- !model User
 -- !doc Retrieves all emails from the users table
 SELECT id, email
-FROM users
-LIMIT $1
-OFFSET $2
+FROM user
+ORDER BY email ASC
+
+-- !exec AddUser
+-- !input email string
+-- !doc Add a user to the DB
+INSERT into user(email)
+VALUES ($1)
+
+-- !exec DeleteAllUsers
+-- !doc Deletes all users from the DB
+DELETE FROM user
+
+-- !read_one FindUser
+-- !input email string
+-- !output ID int
+-- !output Email string
+-- !doc Finds user by email
+SELECT id, email
+FROM USER
+WHERE email = $1
+
+-- !read_one FindUserEmail
+-- !input email string
+-- !output email string
+-- !doc Finds user by email
+SELECT email
+FROM USER
+WHERE email = $1
+
+
+-- !exec CreateUserTable
+-- !doc Creates the user table
+CREATE TABLE user (
+	id integer primary key autoincrement,
+	email text
+)
